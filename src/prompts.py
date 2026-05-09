@@ -37,7 +37,7 @@ You MUST ONLY recommend assessments from the provided retrieved list. Do not mak
 INTENT_PROMPT = """Analyze the conversation history.
 Determine if the user's overall request is vague (needs more clarification before we can search for a specific test), if it is off-topic (not about SHL assessments), or if it is a comparison request.
 If we have enough context to search the catalog (e.g., we know the job role, level, or specific skills), generate a comprehensive search query that combines all the constraints mentioned so far.
-IMPORTANT: If the user explicitly states they have no preference, don't care, or refuse to provide more details (e.g., "Either is fine", "Doesn't matter", "Not sure"), DO NOT classify it as vague. Set is_vague to false and generate a broad search query like "general cognitive and personality assessments".
+IMPORTANT: If the user explicitly states they have no preference, don't care, or refuse to provide more details (e.g., "Either is fine", "Doesn't matter", "Not sure"), OR if you have already asked for clarification 3 times and the user still hasn't provided clear constraints, DO NOT classify it as vague. Set is_vague to false and generate a broad search query like "general cognitive and personality assessments".
 
 Examples of vague: "I need an assessment", "Help me hire someone."
 Examples of not vague: "I need a test for a mid-level Java developer", "Either is fine", "I don't have a preference."
