@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHL Assessment Agent</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f5f7fa; color: #333; }
+        .chat-container { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px; height: 60vh; overflow-y: auto; margin-bottom: 20px; }
+        .message { margin-bottom: 15px; padding: 10px 15px; border-radius: 8px; max-width: 80%; }
+        .user-message { background-color: #007bff; color: white; margin-left: auto; border-bottom-right-radius: 0; }
+        .agent-message { background-color: #e9ecef; color: black; margin-right: auto; border-bottom-left-radius: 0; }
+        .input-area { display: flex; gap: 10px; }
+        input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        button { padding: 12px 24px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        button:hover { background-color: #218838; }
+        .recommendations { margin-top: 10px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; }
+        .recommendation-item { margin-bottom: 5px; }
+        .recommendation-item a { color: #0056b3; text-decoration: none; font-weight: bold; }
+        .recommendation-item a:hover { text-decoration: underline; }
+        .end-notice { text-align: center; color: #6c757d; font-style: italic; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>SHL Assessment Expert</h1>
+    <div class="chat-container" id="chat-box">
+        <div class="message agent-message">Hello! I can help you find the right SHL assessment. What kind of role are you hiring for?</div>
+    </div>
+    
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="Type your message here..." onkeypress="handleKeyPress(event)">
+        <button onclick="sendMessage()" id="send-btn">Send</button>
+    </div>
+
+    <script>
+        let chatHistory = [];
+
+        async function sendMessage() {
+            const inputField = document.getElementById('user-input');
+            const message = inputField.value.trim();
+            if (!message) return;
+
+            addMessageToUI('user', message);
+            inputField.value = '';
+            
+            // Add to history
+            chatHistory.push({ role: "user", content: message });
+            
+            // Disable input while waiting
+            inputField.disabled = true;
+            document.getElementById('send-btn').disabled = true;
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: chatHistory })
+                });
+                
+                if (!response.ok) throw new Error('Server error');
+                
+                const data = await response.json();
+                
+                let agentHtml = data.reply;
+                if (data.recommendations && data.recommendations.length > 0) {
+                    agentHtml += `<div class="recommendations"><strong>Recommendations:</strong><ul style="margin:5px 0; padding-left:20px;">`;
+                    data.recommendations.forEach(rec => {
+                        agentHtml += `<li class="recommendation-item"><a href="${rec.url}" target="_blank">${rec.name}</a> [${rec.test_type}]</li>`;
+                    });
+                    agentHtml += `</ul></div>`;
+                }
+                
+                addMessageToUI('agent', agentHtml, true);
+                
+                // Add agent text reply to history
+                chatHistory.push({ role: "assistant", content: data.reply });
+                
+                if (data.end_of_conversation) {
+                    const chatBox = document.getElementById('chat-box');
+                    const endNotice = document.createElement('div');
+                    endNotice.className = 'end-notice';
+                    endNotice.innerHTML = 'Conversation Complete. Refresh the page to start a new session.';
+                    chatBox.appendChild(endNotice);
+                    return; // keep disabled
+                }
+            } catch (err) {
+                addMessageToUI('agent', 'Sorry, an error occurred. Please check the backend.');
+                chatHistory.pop(); // Remove the user message that failed
+            }
+            
+            // Re-enable
+            inputField.disabled = false;
+            document.getElementById('send-btn').disabled = false;
+            inputField.focus();
+        }
+
+        function addMessageToUI(sender, content, isHtml=false) {
+            const chatBox = document.getElementById('chat-box');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${sender}-message`;
+            if (isHtml) {
+                msgDiv.innerHTML = content;
+            } else {
+                msgDiv.textContent = content;
+            }
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        }
+    </script>
+</body>
+</html>

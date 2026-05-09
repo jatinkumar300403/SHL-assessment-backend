@@ -1,11 +1,17 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any
+import os
 
 from src.agent import process_chat
 from src.retriever import initialize_db
 
 app = FastAPI(title="SHL Assessment Agent API")
+
+# Mount the static directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class Message(BaseModel):
     role: str
@@ -18,6 +24,10 @@ class ChatRequest(BaseModel):
 async def startup_event():
     # Initialize the database on startup
     initialize_db()
+
+@app.get("/")
+async def root():
+    return FileResponse("static/index.html")
 
 @app.get("/health")
 async def health_check():

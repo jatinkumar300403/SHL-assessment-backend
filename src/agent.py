@@ -4,8 +4,8 @@ from google.genai import types
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
-from .prompts import SYSTEM_PROMPT, AgentResponse
-from .retriever import get_catalog_string
+from .prompts import SYSTEM_PROMPT, INTENT_PROMPT, SearchIntent, AgentResponse
+from .retriever import get_collection
 
 api_key = os.environ.get("GEMINI_API_KEY")
 try:
@@ -33,13 +33,65 @@ def process_chat(messages: List[Dict[str, str]]) -> Dict[str, Any]:
         }
         
     history_str = format_history(messages)
-    catalog_str = get_catalog_string()
     
-    # We now pass the entire minified catalog to Gemini.
-    # The context window is easily large enough to handle ~50k tokens, and it gives 100% recall.
-    final_prompt = f"Conversation History:\n{history_str}\n\n"
-    final_prompt += f"SHL Assessment Catalog (JSON):\n{catalog_str}\n\n"
-    final_prompt += "Based on the conversation history and the SHL catalog data, generate the final response matching the AgentResponse schema."
+    # Step 1: Intent Classification & Query Generation
+    intent_prompt = f"{INTENT_PROMPT}\n\nConversation History:\n{history_str}"
+    
+    try:
+        intent_response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=intent_prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=SearchIntent,
+            ),
+        )
+        # Parse the JSON response
+        intent_data = SearchIntent.model_validate_json(intent_response.text)
+    except Exception as e:
+        print(f"Error in intent classification: {e}")
+        # Fallback
+        intent_data = SearchIntent(
+            is_vague=True, 
+            is_off_topic=False, 
+            is_comparison=False, 
+            search_query="", 
+            reasoning="Fallback due to error"
+        )
+        
+    print(f"Intent: {intent_data}")
+    
+    retrieved_context = ""
+    if intent_data.is_off_topic:
+        pass # No need to search
+    elif intent_data.is_vague and not intent_data.is_comparison:
+        pass # No need to search
+    else:
+        # Step 2: Search ChromaDB
+        collection = get_collection()
+        query = intent_data.search_query
+        if not query:
+            query = messages[-1]["content"]
+            
+        results = collection.query(
+            query_texts=[query],
+            n_results=15
+        )
+        
+        if results and results["documents"] and len(results["documents"][0]) > 0:
+            docs = results["documents"][0]
+            metas = results["metadatas"][0]
+            
+            retrieved_context = "Retrieved Assessments Catalog Data:\n\n"
+            for i in range(len(docs)):
+                retrieved_context += f"--- Assessment {i+1} ---\n"
+                retrieved_context += f"{docs[i]}\n"
+                retrieved_context += f"URL: {metas[i].get('url', '')}\n"
+                retrieved_context += f"Test Type (Keys shortcut): {metas[i].get('test_type', 'U')}\n\n"
+                
+    # Step 3: Generate Final Response
+    final_prompt = f"Conversation History:\n{history_str}\n\n{retrieved_context}\n\n"
+    final_prompt += "Based on the above conversation history and the retrieved catalog data (if any), generate the final response matching the AgentResponse schema."
     
     try:
         final_response = client.models.generate_content(
@@ -49,7 +101,7 @@ def process_chat(messages: List[Dict[str, str]]) -> Dict[str, Any]:
                 system_instruction=SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 response_schema=AgentResponse,
-                temperature=0.1, # Keep it deterministic
+                temperature=0.2, # Keep it deterministic
             ),
         )
         
@@ -58,7 +110,7 @@ def process_chat(messages: List[Dict[str, str]]) -> Dict[str, Any]:
     except Exception as e:
         print(f"Error generating final response: {e}")
         return {
-            "reply": "I'm sorry, I encountered an internal error processing the catalog. Please try again.",
+            "reply": "I'm sorry, I encountered an internal error. Please try again.",
             "recommendations": [],
             "end_of_conversation": False
         }
