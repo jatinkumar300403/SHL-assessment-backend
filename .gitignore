@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+chroma_db/
+data/sample_conversations/
+data/sample_conversations.zip
