@@ -14,8 +14,8 @@ except Exception as e:
     print(f"Failed to initialize Gemini Client. Make sure GEMINI_API_KEY is set. Error: {e}")
     client = None
 
-# Using gemini-2.5-flash
-MODEL_ID = "gemini-2.5-flash"
+# Using gemini-flash-latest which has the most generous free-tier rate limits
+MODEL_ID = "gemini-flash-latest"
 
 def format_history(messages: List[Dict[str, str]]) -> str:
     formatted = ""
