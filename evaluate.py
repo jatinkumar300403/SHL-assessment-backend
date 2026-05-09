@@ -24,8 +24,7 @@ def run_evaluation():
     assert len(data.get("recommendations", [])) == 0, "Agent recommended on a vague query!"
     assert data.get("end_of_conversation") == False
     print("Vague Query Evaluation Passed (Agent clarified instead of recommending)")
-
-    time.sleep(4) # Prevent 429 Rate Limiting from Gemini Free Tier
+    time.sleep(15) # Prevent 429 Rate Limiting from Gemini Free Tier
 
     # 3. Test Specific Query (Should Recommend)
     specific_payload = {"messages": [{"role": "user", "content": "I need a test for a mid-level Java developer"}]}
@@ -38,7 +37,7 @@ def run_evaluation():
         assert rec["url"].startswith("http"), "Hallucinated URL detected!"
     print(f"Recommendation Relevance & Groundedness Passed ({len(data['recommendations'])} items returned)")
 
-    time.sleep(4) # Prevent 429 Rate Limiting from Gemini Free Tier
+    time.sleep(15) # Prevent 429 Rate Limiting from Gemini Free Tier
 
     # 4. Test Off-Topic (Should Refuse gracefully)
     off_topic_payload = {"messages": [{"role": "user", "content": "How do I fire an employee?"}]}
