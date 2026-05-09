@@ -1,87 +1,42 @@
 import json
 import os
-import chromadb
-from chromadb.utils import embedding_functions
 
-CHROMA_PATH = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
 DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "shl_product_catalog.json")
 
-def initialize_db():
-    print("Initializing Vector Database...")
-    chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-    
-    # We use sentence-transformers all-MiniLM-L6-v2 which is fast and lightweight
-    sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-    
-    collection = chroma_client.get_or_create_collection(
-        name="shl_assessments",
-        embedding_function=sentence_transformer_ef
-    )
-    
-    # Check if we already have data
-    if collection.count() > 0:
-        print(f"Collection already has {collection.count()} items.")
-        return collection
+_catalog_cache = None
 
+def initialize_db():
+    # We no longer use ChromaDB because it exceeds the 512MB RAM limit on free hosting.
+    # Instead, we minify the catalog to ~200KB and pass it directly to Gemini's 1M token context window.
+    # This gives 100% perfect recall and uses almost zero RAM!
+    global _catalog_cache
+    if _catalog_cache is not None:
+        return _catalog_cache
+        
     with open(DATA_PATH, 'r', encoding='utf-8') as f:
         data = json.load(f, strict=False)
-    
-    documents = []
-    metadatas = []
-    ids = []
-    
-    for i, item in enumerate(data):
-        name = item.get("name", "")
-        desc = item.get("description", "")
+        
+    minified = []
+    for item in data:
         keys = ", ".join(item.get("keys", []))
-        job_levels = ", ".join(item.get("job_levels", []))
-        
-        # Determine a test_type for the recommendation schema based on keys.
-        # It seems 'P' = Personality & Behavior, 'K' = Knowledge & Skills, 'S' = Simulations, etc.
-        test_type = "U" # Unknown
-        if "Personality & Behavior" in keys:
-            test_type = "P"
-        elif "Knowledge & Skills" in keys:
-            test_type = "K"
-        elif "Simulations" in keys:
-            test_type = "S"
-        elif "Ability & Aptitude" in keys:
-            test_type = "A"
-        elif "Competencies" in keys:
-            test_type = "C"
+        test_type = "U"
+        if "Personality & Behavior" in keys: test_type = "P"
+        elif "Knowledge & Skills" in keys: test_type = "K"
+        elif "Simulations" in keys: test_type = "S"
+        elif "Ability & Aptitude" in keys: test_type = "A"
+        elif "Competencies" in keys: test_type = "C"
             
-        doc_text = f"Assessment Name: {name}\nDescription: {desc}\nCategories: {keys}\nJob Levels: {job_levels}"
-        
-        documents.append(doc_text)
-        metadatas.append({
-            "name": name,
-            "url": item.get("link", ""),
+        minified.append({
+            "name": item.get("name"),
+            "url": item.get("link"),
             "test_type": test_type,
-            "keys": keys,
-            "job_levels": job_levels,
-            "description": desc
+            "desc": item.get("description"),
+            "levels": item.get("job_levels_raw")
         })
-        ids.append(str(item.get("entity_id", f"doc_{i}")))
         
-    print(f"Adding {len(documents)} documents to ChromaDB...")
-    
-    # Add in batches to avoid any limits
-    batch_size = 100
-    for i in range(0, len(documents), batch_size):
-        collection.add(
-            documents=documents[i:i+batch_size],
-            metadatas=metadatas[i:i+batch_size],
-            ids=ids[i:i+batch_size]
-        )
-        print(f"Added batch {i//batch_size + 1}")
-        
-    print("Database initialization complete.")
-    return collection
+    _catalog_cache = json.dumps(minified)
+    print(f"Catalog loaded into memory. Size: {len(_catalog_cache) / 1024:.2f} KB")
+    return _catalog_cache
 
-def get_collection():
-    chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-    sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-    return chroma_client.get_collection(name="shl_assessments", embedding_function=sentence_transformer_ef)
-
-if __name__ == "__main__":
-    initialize_db()
+def get_catalog_string():
+    return initialize_db()
